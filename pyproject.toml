@@ -8,6 +8,9 @@ dependencies = [
     "pydantic>=2.0,<3.0",
 ]
 
+[project.scripts]
+rebooking-copilot = "rebooking_copilot.__main__:main"
+
 [tool.poetry]
 packages = [{ include = "rebooking_copilot" }]
 

@@ -11,6 +11,21 @@ class Money(BaseModel):
     currency: str
 
 
+class FxConversion(BaseModel):
+    source: Money
+    target: Money
+    rate: Decimal
+
+
+class EconomicsResult(BaseModel):
+    original_total: Money
+    candidate_total: Money
+    exchange_cost: Money
+    estimated_net_saving: Money
+    fx_used: bool
+    fx_conversions: list[FxConversion]
+
+
 class FlightSegment(BaseModel):
     origin: str
     destination: str

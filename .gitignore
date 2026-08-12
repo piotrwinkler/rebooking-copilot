@@ -2,3 +2,4 @@ __pycache__/
 *.py[cod]
 .venv/
 CODEX_IMPLEMENTATION_BRIEF.md
+.python-version

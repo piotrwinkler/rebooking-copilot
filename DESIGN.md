@@ -50,6 +50,8 @@ Booking -----> Candidate Search
 
 Deterministic code owns candidate search, economics, fare comparison, policy decisions, ranking, and structured output. This keeps financial and policy behavior auditable and reproducible.
 
+The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, then calculates normalized economics for each candidate. It emits intermediate candidate economics for now; final recommendation output will be added after Comparator, Policy Engine, and Ranker are implemented.
+
 ### Candidate Search
 
 Candidate Search is the first implemented subsystem. For this POC, an offer is considered a candidate for a booking when:
@@ -88,13 +90,15 @@ original_total_paid
 
 All monetary arithmetic should use `Decimal`, not floating-point numbers. The structured output should preserve money amounts as strings or Decimal-safe values to avoid accidental precision loss.
 
-FX conversion is deterministic in the POC. A `StaticExchangeRateProvider` will use hardcoded rates and never call a network API. Production would replace this with a timestamped FX provider and include the rate source/time in audit metadata.
+FX conversion is deterministic in the POC. A `StaticExchangeRateProvider` will use hardcoded rates and never call a network API. **Production would replace this with a timestamped FX provider and include the rate source/time in audit metadata.**
 
 CONFIRMED WITH PMs:
 - Positive net saving is required before a candidate can be considered a reshopping opportunity. It is a hard requirement for the whole system.
 
+WHAT I WOULD LIKE TO CONFIRM WITH PMs OR OTHERWISE VERIFY IN THE LITERATURE:
+- USD can be used as a comparison currency.
+
 ASSUMPTIONS:
-- USD is the normalized comparison currency.
 - The original booking's `changeFeePerPassenger` is the current exchange/rebooking cost.
 - The candidate offer's `changeFeePerPassenger` describes the future fare's change policy and is not the immediate cost to perform this exchange.
 - If FX conversion is used, recommendation metadata should expose it and confidence may be reduced later because the POC rate is stubbed.
@@ -104,6 +108,8 @@ ASSUMPTIONS:
 The LLM is not on the financial or policy decision path. It must not decide whether to rebook, choose an offer, calculate savings, alter confidence, or change comparison facts.
 
 If an LLM is added later, it will only generate concise human-readable explanations from an already-computed structured recommendation. The program must still run without an API key or network access by using a deterministic explanation fallback.
+
+It was also confirmed with PMs that customers alrady have their own policies defined but in unstructured way like human readable PDF documents for example. LLM could be a useful tool in parsing such input to the structured format or can be added as a judge in case some rules could not be parsed exactly as they are.
 
 ## Correctness & Money Safety
 

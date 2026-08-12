@@ -1,6 +1,6 @@
 # Rebooking Copilot
 
-POC for a flight reshopping / rebooking recommendation agent. The project is being built iteratively; the current implementation covers the first core slice: loading fixture data and finding candidate fare offers for each booking.
+POC for a flight reshopping / rebooking recommendation agent. The project is being built iteratively; the current implementation covers fixture loading, Candidate Search, Economics Calculator, and a thin pipeline that connects them.
 
 ## Setup
 
@@ -26,17 +26,30 @@ poetry install
 poetry run python -m unittest discover -s tests
 ```
 
+## Run Pipeline
+
+```bash
+poetry run rebooking-copilot
+```
+
+This prints the current intermediate output: candidate offers per booking with normalized economics. Final recommendations will be added once Comparator, Policy Engine, and Ranker are implemented.
+
 The current test suite covers Candidate Search behavior:
 
 - route/date matching
 - rejecting offers without enough seats
 - keeping price filtering out of search
 - rejecting multi-segment bookings for this POC slice
+- calculating net savings with passenger count and change fees
+- normalizing mixed-currency calculations to USD with static FX
 
 ## Project Shape
 
 - `fixtures/` contains the assignment input JSON.
 - `rebooking_copilot/models.py` defines Pydantic domain models.
 - `rebooking_copilot/loaders.py` loads fixture JSON into typed models.
-- `rebooking_copilot/fare_search.py` implements Candidate Search.
+- `rebooking_copilot/services/fare_search.py` implements Candidate Search.
+- `rebooking_copilot/services/economics.py` implements static FX and net-saving calculations.
+- `rebooking_copilot/pipeline.py` wires implemented services together.
+- `rebooking_copilot/__main__.py` provides the CLI entrypoint.
 - `DESIGN.md` is the living design document and should be updated as each subsystem is implemented.

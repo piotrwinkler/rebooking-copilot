@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from copy import deepcopy
 
-from rebooking_copilot.fare_search import FareSearch, UnsupportedItineraryError
 from rebooking_copilot.loaders import load_fares_feed, load_pnrs
 from rebooking_copilot.models import Booking, FareOffer
+from rebooking_copilot.services.fare_search import FareSearch, UnsupportedItineraryError
 
 
 class FareSearchTest(unittest.TestCase):
