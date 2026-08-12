@@ -50,7 +50,7 @@ Booking -----> Candidate Search
 
 Deterministic code owns candidate search, economics, fare comparison, policy decisions, ranking, and structured output. This keeps financial and policy behavior auditable and reproducible.
 
-The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, calculates normalized economics for each candidate, then compares fare quality dimensions. It emits intermediate candidate evaluations for now; final recommendation output will be added after Policy Engine and Ranker are implemented.
+The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, calculates normalized economics for each candidate, compares fare quality dimensions, then applies per-candidate policy. It emits intermediate candidate evaluations for now; final booking-level recommendation output will be added after Ranker is implemented.
 
 ### Candidate Search
 
@@ -123,6 +123,33 @@ ASSUMPTIONS:
 - Different carriers are `UNKNOWN`, not better or worse.
 - Fare basis is kept as metadata elsewhere and not interpreted.
 - Future change fee is compared as a future fare attribute and is separate from the immediate exchange cost.
+
+### Policy Engine
+
+The Policy Engine is the first component that turns computed facts into a decision. Candidate Search, Economics Calculator, and Comparator do not reject candidates for business reasons; they only produce facts for policy.
+
+The POC policy is intentionally static:
+- `DO_NOT_REBOOK` when estimated net saving is zero or negative.
+- `REBOOK` when estimated net saving is positive and every comparison dimension is `BETTER` or `SAME`.
+- `SEND_FOR_HUMAN_REVIEW` when estimated net saving is positive and at least one comparison dimension is `WORSE` or `UNKNOWN`.
+
+| Condition | Decision | Reason codes | Rationale |
+| --- | --- | --- | --- |
+| `estimated_net_saving <= 0` | `DO_NOT_REBOOK` | `NON_POSITIVE_NET_SAVING` | Rebooking must produce a real financial saving after change fees and FX. |
+| `estimated_net_saving > 0` and all comparison dimensions are `BETTER` or `SAME` | `REBOOK` | `POSITIVE_NET_SAVING`, `ALL_QUALITY_DIMENSIONS_ACCEPTABLE` | The candidate saves money and does not degrade any evaluated travel-quality attribute. |
+| `estimated_net_saving > 0` and at least one dimension is `WORSE` | `SEND_FOR_HUMAN_REVIEW` | `POSITIVE_NET_SAVING`, `WORSE_<DIMENSION>` | The candidate saves money, but the traveler/client may not accept the degradation. |
+| `estimated_net_saving > 0` and at least one dimension is `UNKNOWN` | `SEND_FOR_HUMAN_REVIEW` | `POSITIVE_NET_SAVING`, `UNKNOWN_<DIMENSION>` | The candidate saves money, but the system cannot safely decide whether the change is acceptable. |
+
+The policy also emits stable reason codes such as `NON_POSITIVE_NET_SAVING`, `ALL_QUALITY_DIMENSIONS_ACCEPTABLE`, `WORSE_REFUNDABILITY`, and `UNKNOWN_SCHEDULE`.
+
+CONFIRMED WITH PMs:
+- Customers should be able to define their own rules in production but for the purpose of this POC the rules should be static.
+- Positive net saving is a hard gate before any reshopping opportunity exists.
+
+ASSUMPTIONS:
+- The default set of rules for the whole system is extremly defensive - we skip human review only when we are 100% sure that something is a good rebooking recomendation. It can help with enabling automatic actions without the need of any user input. 
+- Quality degradation does not become a dollar penalty in this POC; it moves the candidate to human review.
+- Customer-specific policy configuration is future work, but the service boundary should allow replacing this static policy later. An LLM could be used to parse already existing human readable policies into the structured format or could be add as an element of the reasoning system for policies that could not be parsed to the structured format.
 
 ## Where the LLM Is and Is Not
 

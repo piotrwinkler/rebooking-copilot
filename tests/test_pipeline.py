@@ -27,6 +27,10 @@ class RebookingPipelineTest(unittest.TestCase):
             "SAME",
             by_booking_id["QX7T2A"].candidates[0].comparison.dimensions[0].assessment,
         )
+        self.assertEqual(
+            "REBOOK",
+            by_booking_id["QX7T2A"].candidates[0].policy.decision,
+        )
         self.assertEqual(2, by_booking_id["HB6W9E"].candidate_count)
 
 

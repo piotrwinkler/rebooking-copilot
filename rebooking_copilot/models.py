@@ -48,6 +48,17 @@ class FareComparison(BaseModel):
     dimensions: list[ComparisonDimension]
 
 
+class PolicyDecision(str, Enum):
+    REBOOK = "REBOOK"
+    SEND_FOR_HUMAN_REVIEW = "SEND_FOR_HUMAN_REVIEW"
+    DO_NOT_REBOOK = "DO_NOT_REBOOK"
+
+
+class PolicyEvaluation(BaseModel):
+    decision: PolicyDecision
+    reason_codes: list[str]
+
+
 class FlightSegment(BaseModel):
     origin: str
     destination: str
