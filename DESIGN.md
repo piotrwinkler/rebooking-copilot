@@ -50,7 +50,7 @@ Booking -----> Candidate Search
 
 Deterministic code owns candidate search, economics, fare comparison, policy decisions, ranking, and structured output. This keeps financial and policy behavior auditable and reproducible.
 
-The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, then calculates normalized economics for each candidate. It emits intermediate candidate economics for now; final recommendation output will be added after Comparator, Policy Engine, and Ranker are implemented.
+The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, calculates normalized economics for each candidate, then compares fare quality dimensions. It emits intermediate candidate evaluations for now; final recommendation output will be added after Policy Engine and Ranker are implemented.
 
 ### Candidate Search
 
@@ -103,13 +103,34 @@ ASSUMPTIONS:
 - The candidate offer's `changeFeePerPassenger` describes the future fare's change policy and is not the immediate cost to perform this exchange.
 - If FX conversion is used, recommendation metadata should expose it and confidence may be reduced later because the POC rate is stubbed.
 
+### Comparator
+
+The Comparator describes factual differences between the existing booking and a candidate after economics have been calculated. It does not decide whether to rebook and does not attach dollar values to traveler inconvenience.
+
+Each comparison dimension is assessed as `BETTER`, `SAME`, `WORSE`, or `UNKNOWN`, with raw original/candidate values and deltas preserved where useful.
+
+Implemented POC dimensions:
+- cabin, using an explicit hierarchy
+- stops
+- baggage included pieces
+- refundability
+- departure/arrival schedule with a 15 minute equivalence tolerance
+- carrier
+- future change fee, using normalized per-passenger values calculated by the economics layer
+
+ASSUMPTIONS:
+- Earlier or later schedule changes are not inherently better, so material schedule changes are `UNKNOWN`.
+- Different carriers are `UNKNOWN`, not better or worse.
+- Fare basis is kept as metadata elsewhere and not interpreted.
+- Future change fee is compared as a future fare attribute and is separate from the immediate exchange cost.
+
 ## Where the LLM Is and Is Not
 
 The LLM is not on the financial or policy decision path. It must not decide whether to rebook, choose an offer, calculate savings, alter confidence, or change comparison facts.
 
 If an LLM is added later, it will only generate concise human-readable explanations from an already-computed structured recommendation. The program must still run without an API key or network access by using a deterministic explanation fallback.
 
-It was also confirmed with PMs that customers alrady have their own policies defined but in unstructured way like human readable PDF documents for example. LLM could be a useful tool in parsing such input to the structured format or can be added as a judge in case some rules could not be parsed exactly as they are.
+It was also confirmed with PMs that customers alrady have their own policies defined but in unstructured way like human readable PDF documents for example. LLM could be a useful tool in parsing such input to the structured format or can be added as a judge in case some rules could not be parsed exactly as they are. But it should never act as the only decision step because it introduces uncertainty to the system, increases costs and makes it harder to test and produce repitable results which is especially important in the money related systems. And in this systems many decisions can be made deterministically.
 
 ## Correctness & Money Safety
 

@@ -26,6 +26,14 @@ class EconomicsCalculatorTest(unittest.TestCase):
         self.assertEqual(Decimal("480.00"), result.original_total.amount)
         self.assertEqual(Decimal("300.00"), result.candidate_total.amount)
         self.assertEqual(Decimal("100.00"), result.exchange_cost.amount)
+        self.assertEqual(
+            Decimal("100.00"),
+            result.original_change_fee_per_passenger.amount,
+        )
+        self.assertEqual(
+            Decimal("100.00"),
+            result.candidate_change_fee_per_passenger.amount,
+        )
         self.assertEqual(Decimal("80.00"), result.estimated_net_saving.amount)
         self.assertEqual("USD", result.estimated_net_saving.currency)
         self.assertFalse(result.fx_used)
@@ -65,6 +73,14 @@ class EconomicsCalculatorTest(unittest.TestCase):
         result = self.calculator.calculate(booking, offer)
 
         self.assertEqual(Decimal("25.00"), result.exchange_cost.amount)
+        self.assertEqual(
+            Decimal("25.00"),
+            result.original_change_fee_per_passenger.amount,
+        )
+        self.assertEqual(
+            Decimal("999.00"),
+            result.candidate_change_fee_per_passenger.amount,
+        )
         self.assertEqual(Decimal("155.00"), result.estimated_net_saving.amount)
 
     def _booking(self, pnr: str) -> Booking:

@@ -79,6 +79,12 @@ class EconomicsCalculator:
             currency=booking.ticket.changeFeePerPassenger.currency,
         )
         exchange_cost, exchange_fx = self._convert(exchange_cost)
+        original_change_fee_per_passenger, original_change_fee_fx = self._convert(
+            booking.ticket.changeFeePerPassenger
+        )
+        candidate_change_fee_per_passenger, candidate_change_fee_fx = self._convert(
+            offer.changeFeePerPassenger
+        )
 
         estimated_net_saving = Money(
             amount=_quantize_money(
@@ -88,7 +94,13 @@ class EconomicsCalculator:
         )
         fx_conversions = [
             conversion
-            for conversion in (original_fx, candidate_fx, exchange_fx)
+            for conversion in (
+                original_fx,
+                candidate_fx,
+                exchange_fx,
+                original_change_fee_fx,
+                candidate_change_fee_fx,
+            )
             if conversion is not None
         ]
 
@@ -96,6 +108,8 @@ class EconomicsCalculator:
             original_total=original_total,
             candidate_total=candidate_total,
             exchange_cost=exchange_cost,
+            original_change_fee_per_passenger=original_change_fee_per_passenger,
+            candidate_change_fee_per_passenger=candidate_change_fee_per_passenger,
             estimated_net_saving=estimated_net_saving,
             fx_used=bool(fx_conversions),
             fx_conversions=fx_conversions,

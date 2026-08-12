@@ -23,6 +23,10 @@ class RebookingPipelineTest(unittest.TestCase):
             Decimal("80.00"),
             by_booking_id["QX7T2A"].candidates[0].economics.estimated_net_saving.amount,
         )
+        self.assertEqual(
+            "SAME",
+            by_booking_id["QX7T2A"].candidates[0].comparison.dimensions[0].assessment,
+        )
         self.assertEqual(2, by_booking_id["HB6W9E"].candidate_count)
 
 

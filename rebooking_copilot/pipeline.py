@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from rebooking_copilot.models import Booking, EconomicsResult, FareOffer
+from rebooking_copilot.models import Booking, EconomicsResult, FareComparison, FareOffer
+from rebooking_copilot.services.comparator import FareComparator
 from rebooking_copilot.services.economics import (
     EconomicsCalculator,
     StaticExchangeRateProvider,
@@ -13,6 +14,7 @@ from rebooking_copilot.services.fare_search import FareSearch
 class CandidateEconomics(BaseModel):
     offer_id: str
     economics: EconomicsResult
+    comparison: FareComparison
 
 
 class BookingPipelineResult(BaseModel):
@@ -26,9 +28,11 @@ class RebookingPipeline:
         self,
         fare_search: FareSearch,
         economics_calculator: EconomicsCalculator,
+        fare_comparator: FareComparator,
     ):
         self._fare_search = fare_search
         self._economics_calculator = economics_calculator
+        self._fare_comparator = fare_comparator
 
     def run(
         self,
@@ -43,13 +47,17 @@ class RebookingPipeline:
         offers: list[FareOffer],
     ) -> BookingPipelineResult:
         candidates = self._fare_search.find_candidates(booking, offers)
-        candidate_economics = [
-            CandidateEconomics(
-                offer_id=candidate.offerId,
-                economics=self._economics_calculator.calculate(booking, candidate),
+        candidate_economics = []
+        for candidate in candidates:
+            economics = self._economics_calculator.calculate(booking, candidate)
+            comparison = self._fare_comparator.compare(booking, candidate, economics)
+            candidate_economics.append(
+                CandidateEconomics(
+                    offer_id=candidate.offerId,
+                    economics=economics,
+                    comparison=comparison,
+                )
             )
-            for candidate in candidates
-        ]
 
         return BookingPipelineResult(
             booking_id=booking.pnr,
@@ -62,4 +70,5 @@ def build_default_pipeline() -> RebookingPipeline:
     return RebookingPipeline(
         fare_search=FareSearch(),
         economics_calculator=EconomicsCalculator(StaticExchangeRateProvider()),
+        fare_comparator=FareComparator(),
     )

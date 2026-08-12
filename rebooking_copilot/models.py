@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 
 from pydantic import BaseModel
 
@@ -21,9 +22,30 @@ class EconomicsResult(BaseModel):
     original_total: Money
     candidate_total: Money
     exchange_cost: Money
+    original_change_fee_per_passenger: Money
+    candidate_change_fee_per_passenger: Money
     estimated_net_saving: Money
     fx_used: bool
     fx_conversions: list[FxConversion]
+
+
+class ComparisonAssessment(str, Enum):
+    BETTER = "BETTER"
+    SAME = "SAME"
+    WORSE = "WORSE"
+    UNKNOWN = "UNKNOWN"
+
+
+class ComparisonDimension(BaseModel):
+    name: str
+    assessment: ComparisonAssessment
+    original: object
+    candidate: object
+    delta: object | None = None
+
+
+class FareComparison(BaseModel):
+    dimensions: list[ComparisonDimension]
 
 
 class FlightSegment(BaseModel):
