@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal
+
+from pydantic import BaseModel
+
+
+class Money(BaseModel):
+    amount: Decimal
+    currency: str
+
+
+class FlightSegment(BaseModel):
+    origin: str
+    destination: str
+    departure: datetime
+    arrival: datetime
+    carrier: str
+    flightNumber: str
+    stops: int
+    cabin: str
+    fareBasis: str
+
+
+class Ticket(BaseModel):
+    pricePerPassenger: Money
+    totalPaid: Money
+    cabin: str
+    refundable: bool
+    changeFeePerPassenger: Money
+    baggageIncludedPieces: int
+
+
+class Booking(BaseModel):
+    pnr: str
+    passengers: int
+    itinerary: list[FlightSegment]
+    ticket: Ticket
+
+
+class OfferRoute(BaseModel):
+    origin: str
+    destination: str
+    departureDate: date
+
+
+class FareOffer(BaseModel):
+    offerId: str
+    route: OfferRoute
+    carrier: str
+    flightNumber: str
+    departure: datetime
+    arrival: datetime
+    stops: int
+    cabin: str
+    fareBasis: str
+    price: Money
+    refundable: bool
+    changeFeePerPassenger: Money
+    baggageIncludedPieces: int
+    seatsAvailable: int
+
+
+class PnrFixture(BaseModel):
+    pnrs: list[Booking]
+
+
+class FaresFeed(BaseModel):
+    capturedAt: datetime
+    offers: list[FareOffer]

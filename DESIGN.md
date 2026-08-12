@@ -1,0 +1,149 @@
+# Rebooking Copilot Design
+
+This document is a living design note for the Rebooking Copilot take-home prototype.
+It starts intentionally small and will grow alongside the implementation.
+
+## Approach & Architecture
+
+The prototype reviews existing ticketed bookings against a static fare snapshot and emits one structured recommendation per booking. The core product objective is financial saving: travel-quality changes are treated as constraints that determine whether a cheaper option can be recommended directly or should be sent to a human.
+
+The planned flow is:
+
+```text
+                  Fare Snapshot
+                       |
+Booking -----> Candidate Search
+                       |
+                       v
+              Economics Calculator
+                       |
+                       v
+                   Comparator
+                       |
+                       v
+                  Policy Engine <------------+
+                       |                      |
+                       |              Customer Policy
+                       |               Configuration
+                       |               FUTURE WORK
+                       |                      |
+                       v
+              Candidate Evaluations
+                       |
+                       v
+               Candidate Ranker
+                       |
+                       v
+                 Recommendation
+             /          |           \
+         REBOOK   HUMAN_REVIEW   DO_NOT_REBOOK
+                       |
+                       v
+              Structured Output
+                       |
+                       v
+             Explanation Generator
+                /              \
+              LLM        deterministic
+                              fallback
+```
+
+Deterministic code owns candidate search, economics, fare comparison, policy decisions, ranking, and structured output. This keeps financial and policy behavior auditable and reproducible.
+
+### Candidate Search
+
+Candidate Search is the first implemented subsystem. For this POC, an offer is considered a candidate for a booking when:
+
+- the offer origin matches the booking origin
+- the offer destination matches the booking destination
+- the offer departure date matches the booking departure date
+- the offer has enough available seats for all passengers on the booking
+
+Search does not filter by price. Every route/date/seat-valid offer is passed to the economics layer, where change fees and FX conversion are included before deciding whether the offer produces a real net saving.
+
+ASSUMPTIONS: 
+- The POC will consider only direct origin/destination matches as valid. Production search could support multi-segment journeys, including cases where the searchable journey origin/destination differs from individual flight legs.
+- Only flights with enough seats for all passengers will be chosen. Production search could allow splitting passengers into different flights.
+
+### Economics Calculator
+
+The Economics Calculator determines whether a candidate produces a real financial saving after normalizing currencies and applying the current exchange/rebooking cost. It is separate from the Comparator because money calculations need explicit arithmetic, FX handling, and audit metadata; travel-quality comparison should consume the calculated economics rather than recompute them.
+
+For each booking/candidate pair it should calculate:
+
+- original booking value in the normalized comparison currency
+- candidate total fare in the normalized comparison currency
+- current exchange/rebooking cost in the normalized comparison currency
+- estimated net saving
+- whether FX conversion was used
+
+The estimated net saving formula for the POC is:
+
+```text
+original_total_paid
+- candidate_price_per_passenger * passenger_count
+- original_change_fee_per_passenger * passenger_count
+= estimated_net_saving
+```
+
+All monetary arithmetic should use `Decimal`, not floating-point numbers. The structured output should preserve money amounts as strings or Decimal-safe values to avoid accidental precision loss.
+
+FX conversion is deterministic in the POC. A `StaticExchangeRateProvider` will use hardcoded rates and never call a network API. Production would replace this with a timestamped FX provider and include the rate source/time in audit metadata.
+
+CONFIRMED WITH PMs:
+- Positive net saving is required before a candidate can be considered a reshopping opportunity. It is a hard requirement for the whole system.
+
+ASSUMPTIONS:
+- USD is the normalized comparison currency.
+- The original booking's `changeFeePerPassenger` is the current exchange/rebooking cost.
+- The candidate offer's `changeFeePerPassenger` describes the future fare's change policy and is not the immediate cost to perform this exchange.
+- If FX conversion is used, recommendation metadata should expose it and confidence may be reduced later because the POC rate is stubbed.
+
+## Where the LLM Is and Is Not
+
+The LLM is not on the financial or policy decision path. It must not decide whether to rebook, choose an offer, calculate savings, alter confidence, or change comparison facts.
+
+If an LLM is added later, it will only generate concise human-readable explanations from an already-computed structured recommendation. The program must still run without an API key or network access by using a deterministic explanation fallback.
+
+## Correctness & Money Safety
+
+The first safety rule is that candidate search is intentionally broad and non-financial: it only finds potentially relevant offers. The economics layer will decide whether an offer is actually beneficial after considering price, passenger count, the current exchange/rebooking cost, and currency normalization.
+
+Current assumptions to encode:
+
+- USD is the normalized comparison currency.
+- The original booking's `changeFeePerPassenger` is the current exchange/rebooking cost.
+- The candidate offer's `changeFeePerPassenger` is treated as a future fare attribute for comparison, not as the immediate exchange cost.
+- Domain models and output schemas will use Pydantic.
+- `DO_NOT_REBOOK` results should still include useful metadata explaining why no candidate was selected.
+
+## Scale, Cost & Observability
+
+This draft does not yet design the production-scale data path. At minimum, later iterations should cover batching/search grouping, fare snapshot freshness, audit trails, policy versioning, monitoring, and realized-savings feedback.
+
+## Assumptions & Open Questions
+
+The POC assumes the fixture shape: one itinerary segment per booking and one fare snapshot loaded from static JSON. Customer-specific policies are future work; this prototype will use a static policy and document its rationale as it is implemented.
+
+Open questions to revisit as the design grows:
+
+- What customer-specific travel-quality degradations are acceptable for direct rebooking?
+- What minimum saving threshold, if any, should be required beyond positive net saving?
+- How fresh must a fare snapshot be before a recommendation is considered actionable?
+
+## Deliberately Not Done / Next Steps
+
+Not implemented in this first design slice:
+
+- multi-segment journey matching
+- customer-policy ingestion or configuration
+- live fare search
+- automatic ticket exchange
+- UI or workflow integration
+- live LLM calls
+
+The next implementation step is to create domain models and fixture loading, then implement Candidate Search with tests for route/date matching, insufficient seats, no price filtering during search, and the single-segment fixture assumption.
+
+## AI Usage Note
+
+This project is being developed with Codex as an AI coding assistant. I am using it to review the assignment, draft design slices, and implement the prototype iteratively while keeping deterministic financial and policy logic explicit. One AI suggestion I rejected was using a generic agent framework for the decision path; that would add unnecessary complexity and make money-impacting behavior harder to audit for this POC.
