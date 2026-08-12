@@ -42,7 +42,7 @@ Booking -----> Candidate Search
               Structured Output
                        |
                        v
-             Explanation Generator
+        Explanation Generator (future)
                 /              \
               LLM        deterministic
                               fallback
@@ -50,7 +50,7 @@ Booking -----> Candidate Search
 
 Deterministic code owns candidate search, economics, fare comparison, policy decisions, ranking, and structured output. This keeps financial and policy behavior auditable and reproducible.
 
-The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, calculates normalized economics for each candidate, compares fare quality dimensions, applies per-candidate policy, then ranks candidate evaluations into one booking-level recommendation. Candidate evaluations remain embedded in the output for auditability.
+The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, calculates normalized economics for each candidate, compares fare quality dimensions, applies per-candidate policy, then ranks candidate evaluations into one booking-level recommendation. Candidate evaluations remain embedded in the structured output for auditability.
 
 ### Candidate Search
 
@@ -208,11 +208,32 @@ WHAT I WOULD LIKE TO CONFIRM:
 ASSUMPTIONS:
 - Rejected candidates should remain available in metadata where practical, especially for explaining `DO_NOT_REBOOK`.
 
+### Structured Output
+
+The structured JSON output is the primary product of the POC. It is designed to be machine-readable and audit-friendly rather than optimized for human prose. It was confirmed with PMs that the goal is to integrate this into existing customer services and systems so additional/dedicated layers of data parsing may be needed in production.
+
+The top-level payload includes:
+- `schema_version`
+- `fare_snapshot_captured_at`
+- `recommendation_count`
+- `recommendations`
+
+Each recommendation includes the booking-level decision, selected offer, estimated net saving, confidence, reason codes, and candidate evaluations. Candidate evaluations preserve economics, comparison facts, policy decisions, confidence reasons, and rejected alternatives where practical.
+
+The CLI supports both printing JSON to stdout and writing it to a file:
+
+```bash
+poetry run rebooking-copilot
+poetry run rebooking-copilot --output results.json
+```
+
+The Explanation Generator is deliberately not implemented in this POC. Production could add a deterministic explanation formatter or an LLM-backed explanation layer later, but it must consume the structured output and must not change decisions, savings, confidence, selected offers, or comparison facts.
+
 ## Where the LLM Is and Is Not
 
 The LLM is not on the financial or policy decision path. It must not decide whether to rebook, choose an offer, calculate savings, alter confidence, or change comparison facts.
 
-If an LLM is added later, it will only generate concise human-readable explanations from an already-computed structured recommendation. The program must still run without an API key or network access by using a deterministic explanation fallback.
+If an LLM is added later, it will only generate concise human-readable explanations from an already-computed structured recommendation. Explanation generation is future work and is not required for the POC to run.
 
 It was also confirmed with PMs that customers alrady have their own policies defined but in unstructured way like human readable PDF documents for example. LLM could be a useful tool in parsing such input to the structured format or can be added as a judge in case some rules could not be parsed exactly as they are. But it should never act as the only decision step because it introduces uncertainty to the system, increases costs and makes it harder to test and produce repitable results which is especially important in the money related systems. And in this systems many decisions can be made deterministically.
 
@@ -253,6 +274,7 @@ Not implemented in this first design slice:
 - automatic ticket exchange
 - UI or workflow integration
 - live LLM calls
+- Explanation Generator
 
 The next implementation step is to create domain models and fixture loading, then implement Candidate Search with tests for route/date matching, insufficient seats, no price filtering during search, and the single-segment fixture assumption.
 

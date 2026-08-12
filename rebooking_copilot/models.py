@@ -79,6 +79,13 @@ class BookingRecommendation(BaseModel):
     candidates: list[CandidateEvaluation]
 
 
+class StructuredOutput(BaseModel):
+    schema_version: str
+    fare_snapshot_captured_at: datetime
+    recommendation_count: int
+    recommendations: list[BookingRecommendation]
+
+
 class FlightSegment(BaseModel):
     origin: str
     destination: str
