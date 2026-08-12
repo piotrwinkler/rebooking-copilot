@@ -32,6 +32,7 @@ class RebookingPipelineTest(unittest.TestCase):
             by_booking_id["QX7T2A"].decision,
         )
         self.assertEqual("OF-1001", by_booking_id["QX7T2A"].selected_offer_id)
+        self.assertEqual(Decimal("1.00"), by_booking_id["QX7T2A"].confidence)
         self.assertEqual(2, by_booking_id["HB6W9E"].candidate_count)
         self.assertEqual("DO_NOT_REBOOK", by_booking_id["HB6W9E"].decision)
         self.assertIsNone(by_booking_id["HB6W9E"].selected_offer_id)

@@ -32,7 +32,7 @@ poetry run python -m unittest discover -s tests
 poetry run rebooking-copilot
 ```
 
-This prints one booking-level recommendation per booking, plus candidate-level economics, comparison details, and policy decisions for auditability. Confidence and explanation will be added in later slices.
+This prints one booking-level recommendation per booking, plus candidate-level economics, comparison details, policy decisions, and confidence for auditability. Explanation will be added in a later slice.
 
 The current test suite covers Candidate Search behavior:
 

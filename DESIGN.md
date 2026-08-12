@@ -28,7 +28,7 @@ Booking -----> Candidate Search
                        |               FUTURE WORK
                        |                      |
                        v
-              Candidate Evaluations
+     Candidate Evaluations (unified data format)
                        |
                        v
                Candidate Ranker
@@ -128,6 +128,8 @@ ASSUMPTIONS:
 
 The Policy Engine is the first component that turns computed facts into a decision. Candidate Search, Economics Calculator, and Comparator do not reject candidates for business reasons; they only produce facts for policy.
 
+`confidence` is calculated inside Policy Engine. In this POC it means how confident the system is that a given candidate is a good/safe option to rebook under the current static policy. It is a deterministic heuristic, not a calibrated probability. Ranker could later use this value as a tie-breaker, threshold, or customer-specific rule input.
+
 The POC policy is intentionally static:
 - `DO_NOT_REBOOK` when estimated net saving is zero or negative.
 - `REBOOK` when estimated net saving is positive and every comparison dimension is `BETTER` or `SAME`.
@@ -142,12 +144,33 @@ The POC policy is intentionally static:
 
 The policy also emits stable reason codes such as `NON_POSITIVE_NET_SAVING`, `ALL_QUALITY_DIMENSIONS_ACCEPTABLE`, `WORSE_REFUNDABILITY`, and `UNKNOWN_SCHEDULE`.
 
+Confidence starts at `1.00` only for candidates with positive net saving. Candidates with zero or negative net saving receive `0.00` because they are not good rebooking options under the core business requirement.
+
+Initial POC confidence penalties:
+
+| Signal | Penalty |
+| --- | --- |
+| Cabin downgrade | `-0.30` |
+| Additional stop | `-0.25` |
+| Loss of refundability | `-0.20` |
+| Lost baggage piece | `-0.15` |
+| Material schedule change / unknown schedule impact | `-0.15` |
+| Different carrier / unknown carrier impact | `-0.10` |
+| Worse future change fee | `-0.10` |
+| Other unknown comparison | `-0.20` |
+| Stubbed FX conversion | `-0.10` |
+
+The result is clamped to `[0.00, 1.00]` and emitted with confidence reason codes such as `CONFIDENCE_PENALTY_REFUNDABILITY` or `CONFIDENCE_PENALTY_STUBBED_FX`.
+
 CONFIRMED WITH PMs:
 - Customers should be able to define their own rules in production but for the purpose of this POC the rules should be static.
 - Positive net saving is a hard gate before any reshopping opportunity exists.
 
-ASSUMPTIONS:
+WHAT I WOULD CONFIRM:
+- The penalties for confidence computation
 - The default set of rules for the whole system is extremly defensive - we skip human review only when we are 100% sure that something is a good rebooking recomendation. It can help with enabling automatic actions without the need of any user input. 
+
+ASSUMPTIONS:
 - Quality degradation does not become a dollar penalty in this POC; it moves the candidate to human review.
 - Customer-specific policy configuration is future work, but the service boundary should allow replacing this static policy later. An LLM could be used to parse already existing human readable policies into the structured format or could be add as an element of the reasoning system for policies that could not be parsed to the structured format.
 
@@ -159,7 +182,7 @@ For this POC each evaluation should include:
 - selected `offer_id`
 - normalized economics, including estimated net saving and FX metadata
 - comparison dimensions and raw deltas
-- policy decision and reason codes
+- policy decision, reason codes, confidence, and confidence reason codes
 
 Candidate Evaluations are intentionally preserved even when policy returns `DO_NOT_REBOOK`. This keeps the output auditable: the system can show that an offer was found, priced, compared, and then rejected by policy because it did not produce positive net saving or failed another rule.
 
@@ -206,7 +229,9 @@ Current assumptions to encode:
 
 ## Scale, Cost & Observability
 
-This draft does not yet design the production-scale data path. At minimum, later iterations should cover batching/search grouping, fare snapshot freshness, audit trails, policy versioning, monitoring, and realized-savings feedback.
+Several layers of observability should be introduced for the application:
+
+### 
 
 ## Assumptions & Open Questions
 

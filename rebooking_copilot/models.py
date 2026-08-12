@@ -57,6 +57,8 @@ class PolicyDecision(str, Enum):
 class PolicyEvaluation(BaseModel):
     decision: PolicyDecision
     reason_codes: list[str]
+    confidence: Decimal
+    confidence_reason_codes: list[str]
 
 
 class CandidateEvaluation(BaseModel):
@@ -71,6 +73,7 @@ class BookingRecommendation(BaseModel):
     decision: PolicyDecision
     selected_offer_id: str | None
     estimated_net_saving: Money
+    confidence: Decimal
     reason_codes: list[str]
     candidate_count: int
     candidates: list[CandidateEvaluation]

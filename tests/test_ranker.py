@@ -35,6 +35,7 @@ class CandidateRankerTest(unittest.TestCase):
         self.assertEqual(PolicyDecision.REBOOK, recommendation.decision)
         self.assertEqual("OF-3001", recommendation.selected_offer_id)
         self.assertEqual(Decimal("320.00"), recommendation.estimated_net_saving.amount)
+        self.assertEqual(Decimal("0.90"), recommendation.confidence)
 
     def test_rebook_candidates_outrank_higher_saving_review_candidates(self):
         recommendation = self.ranker.rank(
@@ -71,6 +72,7 @@ class CandidateRankerTest(unittest.TestCase):
         self.assertEqual(PolicyDecision.DO_NOT_REBOOK, recommendation.decision)
         self.assertIsNone(recommendation.selected_offer_id)
         self.assertEqual(Decimal("0.00"), recommendation.estimated_net_saving.amount)
+        self.assertEqual(Decimal("0.00"), recommendation.confidence)
         self.assertEqual(["NO_REBOOKABLE_CANDIDATES"], recommendation.reason_codes)
         self.assertEqual(2, recommendation.candidate_count)
 

@@ -28,6 +28,8 @@ class PolicyEngineTest(unittest.TestCase):
             ["POSITIVE_NET_SAVING", "ALL_QUALITY_DIMENSIONS_ACCEPTABLE"],
             evaluation.reason_codes,
         )
+        self.assertEqual("1.00", str(evaluation.confidence))
+        self.assertEqual([], evaluation.confidence_reason_codes)
 
     def test_sends_positive_saving_with_degradation_for_human_review(self):
         evaluation = self._evaluate("ZC3N1D", "OF-4001")
@@ -35,12 +37,22 @@ class PolicyEngineTest(unittest.TestCase):
         self.assertEqual(PolicyDecision.SEND_FOR_HUMAN_REVIEW, evaluation.decision)
         self.assertIn("POSITIVE_NET_SAVING", evaluation.reason_codes)
         self.assertIn("WORSE_REFUNDABILITY", evaluation.reason_codes)
+        self.assertEqual("0.80", str(evaluation.confidence))
+        self.assertEqual(
+            ["CONFIDENCE_PENALTY_REFUNDABILITY"],
+            evaluation.confidence_reason_codes,
+        )
 
     def test_rejects_non_positive_saving_before_quality_policy(self):
         evaluation = self._evaluate("LM9P4C", "OF-2001")
 
         self.assertEqual(PolicyDecision.DO_NOT_REBOOK, evaluation.decision)
         self.assertEqual(["NON_POSITIVE_NET_SAVING"], evaluation.reason_codes)
+        self.assertEqual("0.00", str(evaluation.confidence))
+        self.assertEqual(
+            ["NON_POSITIVE_NET_SAVING"],
+            evaluation.confidence_reason_codes,
+        )
 
     def test_human_review_reasons_include_unknown_dimensions(self):
         booking = self._booking("QX7T2A")
@@ -53,6 +65,21 @@ class PolicyEngineTest(unittest.TestCase):
 
         self.assertEqual(PolicyDecision.SEND_FOR_HUMAN_REVIEW, evaluation.decision)
         self.assertIn("UNKNOWN_SCHEDULE", evaluation.reason_codes)
+        self.assertEqual("0.85", str(evaluation.confidence))
+        self.assertIn(
+            "CONFIDENCE_PENALTY_SCHEDULE",
+            evaluation.confidence_reason_codes,
+        )
+
+    def test_stubbed_fx_reduces_confidence(self):
+        evaluation = self._evaluate("RT5K8B", "OF-3001")
+
+        self.assertEqual(PolicyDecision.REBOOK, evaluation.decision)
+        self.assertEqual("0.90", str(evaluation.confidence))
+        self.assertEqual(
+            ["CONFIDENCE_PENALTY_STUBBED_FX"],
+            evaluation.confidence_reason_codes,
+        )
 
     def _evaluate(self, pnr: str, offer_id: str):
         booking = self._booking(pnr)
