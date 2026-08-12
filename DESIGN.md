@@ -50,7 +50,7 @@ Booking -----> Candidate Search
 
 Deterministic code owns candidate search, economics, fare comparison, policy decisions, ranking, and structured output. This keeps financial and policy behavior auditable and reproducible.
 
-The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, calculates normalized economics for each candidate, compares fare quality dimensions, then applies per-candidate policy. It emits intermediate candidate evaluations for now; final booking-level recommendation output will be added after Ranker is implemented.
+The codebase keeps domain services in `rebooking_copilot/services/` and wires them through a thin pipeline. The current runnable pipeline loads fixture bookings and fares, runs Candidate Search, calculates normalized economics for each candidate, compares fare quality dimensions, applies per-candidate policy, then ranks candidate evaluations into one booking-level recommendation. Candidate evaluations remain embedded in the output for auditability.
 
 ### Candidate Search
 
@@ -151,6 +151,40 @@ ASSUMPTIONS:
 - Quality degradation does not become a dollar penalty in this POC; it moves the candidate to human review.
 - Customer-specific policy configuration is future work, but the service boundary should allow replacing this static policy later. An LLM could be used to parse already existing human readable policies into the structured format or could be add as an element of the reasoning system for policies that could not be parsed to the structured format.
 
+### Candidate Evaluations
+
+A Candidate Evaluation is the complete deterministic record for one booking/candidate pair. It is the unit passed from Policy Engine to Ranker and should contain enough information to explain, audit, and later reproduce the decision.
+
+For this POC each evaluation should include:
+- selected `offer_id`
+- normalized economics, including estimated net saving and FX metadata
+- comparison dimensions and raw deltas
+- policy decision and reason codes
+
+Candidate Evaluations are intentionally preserved even when policy returns `DO_NOT_REBOOK`. This keeps the output auditable: the system can show that an offer was found, priced, compared, and then rejected by policy because it did not produce positive net saving or failed another rule.
+
+### Candidate Ranker
+
+The Ranker converts multiple candidate-level policy evaluations into one booking-level recommendation. It does not invent a utility function and does not price traveler inconvenience. Ranking follows the product objective: capture the best acceptable saving.
+
+The POC ranking rules are:
+
+| Available candidate evaluations | Booking-level decision | Selected offer | Ranking rule |
+| --- | --- | --- | --- |
+| At least one `REBOOK` candidate | `REBOOK` | `REBOOK` candidate with highest estimated net saving | Directly acceptable savings win over human-review candidates. |
+| No `REBOOK`, at least one `SEND_FOR_HUMAN_REVIEW` candidate | `SEND_FOR_HUMAN_REVIEW` | review candidate with highest estimated net saving | The best saving is surfaced for human judgment. |
+| No `REBOOK` and no `SEND_FOR_HUMAN_REVIEW` candidates | `DO_NOT_REBOOK` | `null` | No policy-acceptable reshopping opportunity exists. |
+
+CONFIRMED WITH PMs:
+- Highest estimated net saving is the most important criterion.
+
+WHAT I WOULD LIKE TO CONFIRM:
+- `REBOOK` outranks `SEND_FOR_HUMAN_REVIEW` even if a review candidate saves more.
+- If there is many options we could potentially increase the number of the options presented to customers to selected few or many. Won't be implemented here but could be as a future improvement.
+
+ASSUMPTIONS:
+- Rejected candidates should remain available in metadata where practical, especially for explaining `DO_NOT_REBOOK`.
+
 ## Where the LLM Is and Is Not
 
 The LLM is not on the financial or policy decision path. It must not decide whether to rebook, choose an offer, calculate savings, alter confidence, or change comparison facts.
@@ -168,7 +202,6 @@ Current assumptions to encode:
 - USD is the normalized comparison currency.
 - The original booking's `changeFeePerPassenger` is the current exchange/rebooking cost.
 - The candidate offer's `changeFeePerPassenger` is treated as a future fare attribute for comparison, not as the immediate exchange cost.
-- Domain models and output schemas will use Pydantic.
 - `DO_NOT_REBOOK` results should still include useful metadata explaining why no candidate was selected.
 
 ## Scale, Cost & Observability

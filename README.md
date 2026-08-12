@@ -1,6 +1,6 @@
 # Rebooking Copilot
 
-POC for a flight reshopping / rebooking recommendation agent. The project is being built iteratively; the current implementation covers fixture loading, Candidate Search, Economics Calculator, Comparator, Policy Engine, and a thin pipeline that connects them.
+POC for a flight reshopping / rebooking recommendation agent. The project is being built iteratively; the current implementation covers fixture loading, Candidate Search, Economics Calculator, Comparator, Policy Engine, Candidate Ranker, and a thin pipeline that connects them.
 
 ## Setup
 
@@ -32,7 +32,7 @@ poetry run python -m unittest discover -s tests
 poetry run rebooking-copilot
 ```
 
-This prints the current intermediate output: candidate offers per booking with normalized economics, fare comparison details, and per-candidate policy decisions. Final booking-level recommendations will be added once Ranker and structured recommendation output are implemented.
+This prints one booking-level recommendation per booking, plus candidate-level economics, comparison details, and policy decisions for auditability. Confidence and explanation will be added in later slices.
 
 The current test suite covers Candidate Search behavior:
 
@@ -44,6 +44,7 @@ The current test suite covers Candidate Search behavior:
 - normalizing mixed-currency calculations to USD with static FX
 - comparing candidate fare quality dimensions
 - applying the POC policy to each candidate
+- ranking candidate evaluations into one booking-level recommendation
 
 ## Project Shape
 
@@ -54,6 +55,7 @@ The current test suite covers Candidate Search behavior:
 - `rebooking_copilot/services/economics.py` implements static FX and net-saving calculations.
 - `rebooking_copilot/services/comparator.py` implements factual fare comparison.
 - `rebooking_copilot/services/policy.py` implements per-candidate policy decisions.
+- `rebooking_copilot/services/ranker.py` implements booking-level candidate ranking.
 - `rebooking_copilot/pipeline.py` wires implemented services together.
 - `rebooking_copilot/__main__.py` provides the CLI entrypoint.
 - `DESIGN.md` is the living design document and should be updated as each subsystem is implemented.

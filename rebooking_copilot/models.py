@@ -59,6 +59,23 @@ class PolicyEvaluation(BaseModel):
     reason_codes: list[str]
 
 
+class CandidateEvaluation(BaseModel):
+    offer_id: str
+    economics: EconomicsResult
+    comparison: FareComparison
+    policy: PolicyEvaluation
+
+
+class BookingRecommendation(BaseModel):
+    booking_id: str
+    decision: PolicyDecision
+    selected_offer_id: str | None
+    estimated_net_saving: Money
+    reason_codes: list[str]
+    candidate_count: int
+    candidates: list[CandidateEvaluation]
+
+
 class FlightSegment(BaseModel):
     origin: str
     destination: str

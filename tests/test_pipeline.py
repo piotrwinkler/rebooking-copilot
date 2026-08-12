@@ -12,7 +12,7 @@ class RebookingPipelineTest(unittest.TestCase):
         self.bookings = load_pnrs("fixtures/pnrs.json").pnrs
         self.offers = load_fares_feed("fixtures/fares_feed.json").offers
 
-    def test_runs_candidate_search_and_economics_for_each_booking(self):
+    def test_runs_full_pipeline_and_returns_booking_recommendations(self):
         results = build_default_pipeline().run(self.bookings, self.offers)
 
         by_booking_id = {result.booking_id: result for result in results}
@@ -29,9 +29,12 @@ class RebookingPipelineTest(unittest.TestCase):
         )
         self.assertEqual(
             "REBOOK",
-            by_booking_id["QX7T2A"].candidates[0].policy.decision,
+            by_booking_id["QX7T2A"].decision,
         )
+        self.assertEqual("OF-1001", by_booking_id["QX7T2A"].selected_offer_id)
         self.assertEqual(2, by_booking_id["HB6W9E"].candidate_count)
+        self.assertEqual("DO_NOT_REBOOK", by_booking_id["HB6W9E"].decision)
+        self.assertIsNone(by_booking_id["HB6W9E"].selected_offer_id)
 
 
 if __name__ == "__main__":

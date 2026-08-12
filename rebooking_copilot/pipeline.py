@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from rebooking_copilot.models import (
     Booking,
-    EconomicsResult,
-    FareComparison,
+    BookingRecommendation,
+    CandidateEvaluation,
     FareOffer,
-    PolicyEvaluation,
 )
 from rebooking_copilot.services.comparator import FareComparator
 from rebooking_copilot.services.economics import (
@@ -16,19 +13,7 @@ from rebooking_copilot.services.economics import (
 )
 from rebooking_copilot.services.fare_search import FareSearch
 from rebooking_copilot.services.policy import PolicyEngine
-
-
-class CandidateEvaluation(BaseModel):
-    offer_id: str
-    economics: EconomicsResult
-    comparison: FareComparison
-    policy: PolicyEvaluation
-
-
-class BookingPipelineResult(BaseModel):
-    booking_id: str
-    candidate_count: int
-    candidates: list[CandidateEvaluation]
+from rebooking_copilot.services.ranker import CandidateRanker
 
 
 class RebookingPipeline:
@@ -38,24 +23,26 @@ class RebookingPipeline:
         economics_calculator: EconomicsCalculator,
         fare_comparator: FareComparator,
         policy_engine: PolicyEngine,
+        candidate_ranker: CandidateRanker,
     ):
         self._fare_search = fare_search
         self._economics_calculator = economics_calculator
         self._fare_comparator = fare_comparator
         self._policy_engine = policy_engine
+        self._candidate_ranker = candidate_ranker
 
     def run(
         self,
         bookings: list[Booking],
         offers: list[FareOffer],
-    ) -> list[BookingPipelineResult]:
+    ) -> list[BookingRecommendation]:
         return [self.evaluate_booking(booking, offers) for booking in bookings]
 
     def evaluate_booking(
         self,
         booking: Booking,
         offers: list[FareOffer],
-    ) -> BookingPipelineResult:
+    ) -> BookingRecommendation:
         candidates = self._fare_search.find_candidates(booking, offers)
         candidate_evaluations = []
         for candidate in candidates:
@@ -71,11 +58,7 @@ class RebookingPipeline:
                 )
             )
 
-        return BookingPipelineResult(
-            booking_id=booking.pnr,
-            candidate_count=len(candidate_evaluations),
-            candidates=candidate_evaluations,
-        )
+        return self._candidate_ranker.rank(booking.pnr, candidate_evaluations)
 
 
 def build_default_pipeline() -> RebookingPipeline:
@@ -84,4 +67,5 @@ def build_default_pipeline() -> RebookingPipeline:
         economics_calculator=EconomicsCalculator(StaticExchangeRateProvider()),
         fare_comparator=FareComparator(),
         policy_engine=PolicyEngine(),
+        candidate_ranker=CandidateRanker(),
     )
