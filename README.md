@@ -32,7 +32,50 @@ poetry run python -m unittest discover -s tests
 poetry run rebooking-copilot
 ```
 
-This prints a structured JSON payload with one booking-level recommendation per booking, plus candidate-level economics, comparison details, policy decisions, and confidence for auditability. To write the output to a file:
+This prints a structured JSON payload with one booking-level recommendation per booking, plus candidate-level economics, comparison details, policy decisions, and confidence for auditability. Runtime uses only the checked-in fixture JSON and static FX rates; no external APIs, paid services, network calls, or API keys are required.
+
+Abridged example output shape:
+
+```json
+{
+  "schema_version": "poc.v1",
+  "fare_snapshot_captured_at": "2026-07-08T09:00:00Z",
+  "recommendation_count": 5,
+  "recommendations": [
+    {
+      "booking_id": "QX7T2A",
+      "decision": "REBOOK",
+      "selected_offer_id": "OF-1001",
+      "estimated_net_saving": {
+        "amount": "80.00",
+        "currency": "USD"
+      },
+      "confidence": "1.00",
+      "reason_codes": [
+        "POSITIVE_NET_SAVING",
+        "ALL_QUALITY_DIMENSIONS_ACCEPTABLE"
+      ],
+      "candidate_count": 1,
+      "candidates": [
+        {
+          "offer_id": "OF-1001",
+          "policy": {
+            "decision": "REBOOK",
+            "reason_codes": [
+              "POSITIVE_NET_SAVING",
+              "ALL_QUALITY_DIMENSIONS_ACCEPTABLE"
+            ],
+            "confidence": "1.00",
+            "confidence_reason_codes": []
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+To write the full output to a file:
 
 ```bash
 poetry run rebooking-copilot --output results.json

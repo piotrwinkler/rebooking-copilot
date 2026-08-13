@@ -1,8 +1,5 @@
 # Rebooking Copilot Design
 
-This document is a living design note for the Rebooking Copilot take-home prototype.
-It starts intentionally small and will grow alongside the implementation.
-
 ## Approach & Architecture
 
 The prototype reviews existing ticketed bookings against a static fare snapshot and emits one structured recommendation per booking. The core product objective is financial saving: travel-quality changes are treated as constraints that determine whether a cheaper option can be recommended directly or should be sent to a human.
@@ -63,9 +60,13 @@ Candidate Search is the first implemented subsystem. For this POC, an offer is c
 
 Search does not filter by price. Every route/date/seat-valid offer is passed to the economics layer, where change fees and FX conversion are included before deciding whether the offer produces a real net saving.
 
-ASSUMPTIONS: 
-- The POC will consider only direct origin/destination matches as valid. Production search could support multi-segment journeys, including cases where the searchable journey origin/destination differs from individual flight legs.
-- Only flights with enough seats for all passengers will be chosen. Production search could allow splitting passengers into different flights.
+ASSUMPTIONS:
+- The POC will consider only direct origin/destination matches as valid.
+- Only offers with enough seats for all passengers will be considered candidates.
+
+FUTURE IMPROVEMENTS:
+- Support multi-segment journeys, including cases where the searchable journey origin/destination differs from individual flight legs.
+- Consider whether passenger splitting is acceptable for customers that allow travelers in one booking to move to different flights.
 
 ### Economics Calculator
 
@@ -90,18 +91,21 @@ original_total_paid
 
 All monetary arithmetic should use `Decimal`, not floating-point numbers. The structured output should preserve money amounts as strings or Decimal-safe values to avoid accidental precision loss.
 
-FX conversion is deterministic in the POC. A `StaticExchangeRateProvider` will use hardcoded rates and never call a network API. **Production would replace this with a timestamped FX provider and include the rate source/time in audit metadata.**
+FX conversion is deterministic in the POC. A `StaticExchangeRateProvider` will use hardcoded rates and never call a network API.
 
 CONFIRMED WITH PMs:
 - Positive net saving is required before a candidate can be considered a reshopping opportunity. It is a hard requirement for the whole system.
 
-WHAT I WOULD LIKE TO CONFIRM WITH PMs OR OTHERWISE VERIFY IN THE LITERATURE:
+WHAT I WOULD CONFIRM WITH PMs:
 - USD can be used as a comparison currency.
 
 ASSUMPTIONS:
 - The original booking's `changeFeePerPassenger` is the current exchange/rebooking cost.
 - The candidate offer's `changeFeePerPassenger` describes the future fare's change policy and is not the immediate cost to perform this exchange.
 - If FX conversion is used, recommendation metadata should expose it and confidence may be reduced later because the POC rate is stubbed.
+
+FUTURE IMPROVEMENTS:
+- Replace static FX rates with a timestamped FX provider and include the rate source/time in audit metadata.
 
 ### Comparator
 
@@ -114,21 +118,26 @@ Implemented POC dimensions:
 - stops
 - baggage included pieces
 - refundability
-- departure/arrival schedule with a 15 minute equivalence tolerance
+- departure/arrival schedule with a 15-minute equivalence tolerance
 - carrier
 - future change fee, using normalized per-passenger values calculated by the economics layer
 
 ASSUMPTIONS:
+- Things like fewer stops and more baggage pieces can be treated as obvious positives.
 - Earlier or later schedule changes are not inherently better, so material schedule changes are `UNKNOWN`.
 - Different carriers are `UNKNOWN`, not better or worse.
 - Fare basis is kept as metadata elsewhere and not interpreted.
 - Future change fee is compared as a future fare attribute and is separate from the immediate exchange cost.
 
+FUTURE IMPROVEMENTS:
+- Add customer-specific preferences for dimensions that are not universally better or worse.
+- Compare richer fare-rule attributes when the data source provides them.
+
 ### Policy Engine
 
 The Policy Engine is the first component that turns computed facts into a decision. Candidate Search, Economics Calculator, and Comparator do not reject candidates for business reasons; they only produce facts for policy.
 
-`confidence` is calculated inside Policy Engine. In this POC it means how confident the system is that a given candidate is a good/safe option to rebook under the current static policy. It is a deterministic heuristic, not a calibrated probability. Ranker could later use this value as a tie-breaker, threshold, or customer-specific rule input.
+`confidence` is calculated inside Policy Engine. In this POC it means how confident the system is that a given candidate is a good and safe option to rebook under the current static policy. It is a deterministic heuristic.
 
 The POC policy is intentionally static:
 - `DO_NOT_REBOOK` when estimated net saving is zero or negative.
@@ -166,20 +175,25 @@ CONFIRMED WITH PMs:
 - Customers should be able to define their own rules in production but for the purpose of this POC the rules should be static.
 - Positive net saving is a hard gate before any reshopping opportunity exists.
 
-WHAT I WOULD CONFIRM:
-- The penalties for confidence computation
-- The default set of rules for the whole system is extremly defensive - we skip human review only when we are 100% sure that something is a good rebooking recomendation. It can help with enabling automatic actions without the need of any user input. 
+WHAT I WOULD CONFIRM WITH PMs:
+- The exact penalties used for confidence computation.
 
 ASSUMPTIONS:
+- The default rule set is intentionally defensive: the system skips human review only when it is highly confident that the candidate is a good rebooking recommendation. This creates a safer path toward future automatic actions without requiring user input for every case.
+- The default policy is meant to be broadly usable across customers: it optimizes for savings while avoiding quality degradations that could violate unknown customer policies. Customer-specific tuning can increase captured savings later, but the POC starts from a conservative baseline.
 - Quality degradation does not become a dollar penalty in this POC; it moves the candidate to human review.
-- Customer-specific policy configuration is future work, but the service boundary should allow replacing this static policy later. An LLM could be used to parse already existing human readable policies into the structured format or could be add as an element of the reasoning system for policies that could not be parsed to the structured format.
+
+FUTURE IMPROVEMENTS:
+- Allow the Ranker or customer policy to use confidence as a tie-breaker, threshold, or customer-specific rule input.
+- Replace the static POC policy with versioned customer-specific policy configuration.
+- Use an LLM to help parse existing human-readable policies into a structured format, or to support review of policies that cannot be represented exactly as deterministic rules.
 
 ### Candidate Evaluations
 
 A Candidate Evaluation is the complete deterministic record for one booking/candidate pair. It is the unit passed from Policy Engine to Ranker and should contain enough information to explain, audit, and later reproduce the decision.
 
 For this POC each evaluation should include:
-- selected `offer_id`
+- candidate `offer_id`
 - normalized economics, including estimated net saving and FX metadata
 - comparison dimensions and raw deltas
 - policy decision, reason codes, confidence, and confidence reason codes
@@ -201,16 +215,19 @@ The POC ranking rules are:
 CONFIRMED WITH PMs:
 - Highest estimated net saving is the most important criterion.
 
-WHAT I WOULD LIKE TO CONFIRM:
+WHAT I WOULD CONFIRM WITH PMs:
 - `REBOOK` outranks `SEND_FOR_HUMAN_REVIEW` even if a review candidate saves more.
-- If there is many options we could potentially increase the number of the options presented to customers to selected few or many. Won't be implemented here but could be as a future improvement.
 
 ASSUMPTIONS:
-- Rejected candidates should remain available in metadata where practical, especially for explaining `DO_NOT_REBOOK`.
+- In the POC, rejected candidates remain available in the structured output for auditability and for explaining `DO_NOT_REBOOK`.
+
+FUTURE IMPROVEMENTS:
+- Return a selected subset of viable options rather than only the top recommendation when there are many strong alternatives.
+- Use confidence as a tie-breaker or threshold if future policy requires it.
 
 ### Structured Output
 
-The structured JSON output is the primary product of the POC. It is designed to be machine-readable and audit-friendly rather than optimized for human prose. It was confirmed with PMs that the goal is to integrate this into existing customer services and systems so additional/dedicated layers of data parsing may be needed in production.
+The structured JSON output is the primary product of the POC. It is designed to be machine-readable and audit-friendly rather than optimized for human prose. It was confirmed with PMs that the end state should integrate into existing customer workflows and systems, so production may need additional API adapters or event-specific payload shapes.
 
 The top-level payload includes:
 - `schema_version`
@@ -218,7 +235,7 @@ The top-level payload includes:
 - `recommendation_count`
 - `recommendations`
 
-Each recommendation includes the booking-level decision, selected offer, estimated net saving, confidence, reason codes, and candidate evaluations. Candidate evaluations preserve economics, comparison facts, policy decisions, confidence reasons, and rejected alternatives where practical.
+Each recommendation includes the booking-level decision, selected offer, estimated net saving, confidence, reason codes, and candidate evaluations. Candidate evaluations preserve economics, comparison facts, policy decisions, confidence reasons, and rejected alternatives.
 
 The CLI supports both printing JSON to stdout and writing it to a file:
 
@@ -227,57 +244,132 @@ poetry run rebooking-copilot
 poetry run rebooking-copilot --output results.json
 ```
 
-The Explanation Generator is deliberately not implemented in this POC. Production could add a deterministic explanation formatter or an LLM-backed explanation layer later, but it must consume the structured output and must not change decisions, savings, confidence, selected offers, or comparison facts.
+The Explanation Generator is deliberately not implemented in this POC as it is not a critical part of the system. If added later, it must consume the structured output and must not change decisions, savings, confidence, selected offers, or comparison facts.
+
+FUTURE IMPROVEMENTS:
+- Add API adapters or event-specific payload shapes for target customer workflows.
+- Return only a subset of candidates in API responses while storing the full audit trail separately.
+- Add a deterministic explanation formatter or LLM-backed explanation layer that consumes structured output without changing it.
 
 ## Where the LLM Is and Is Not
 
 The LLM is not on the financial or policy decision path. It must not decide whether to rebook, choose an offer, calculate savings, alter confidence, or change comparison facts.
 
-If an LLM is added later, it will only generate concise human-readable explanations from an already-computed structured recommendation. Explanation generation is future work and is not required for the POC to run.
+An LLM could be added as the final layer to generate a human-readable summary of the recommendation, but it is not a critical system component.
 
-It was also confirmed with PMs that customers alrady have their own policies defined but in unstructured way like human readable PDF documents for example. LLM could be a useful tool in parsing such input to the structured format or can be added as a judge in case some rules could not be parsed exactly as they are. But it should never act as the only decision step because it introduces uncertainty to the system, increases costs and makes it harder to test and produce repitable results which is especially important in the money related systems. And in this systems many decisions can be made deterministically.
+It was also confirmed with PMs that customers already have their own policies, often in unstructured formats such as human-readable PDF documents. An LLM could be useful for parsing that input into a structured policy format, or as an assistive review step for rules that cannot be represented exactly. It should not be the only decision step because it introduces uncertainty, increases cost, and makes the system harder to test and reproduce. That is especially important in money-related workflows. In this POC, all decisions can be made deterministically assuming the policies are known and correct.
 
 ## Correctness & Money Safety
 
-The first safety rule is that candidate search is intentionally broad and non-financial: it only finds potentially relevant offers. The economics layer will decide whether an offer is actually beneficial after considering price, passenger count, the current exchange/rebooking cost, and currency normalization.
+All calculations and comparisons are deterministic. The system does not rely on an LLM for money, policy, ranking, confidence, or structured output. Candidate Search is intentionally broad and non-financial: it only finds potentially relevant offers. Economics then determines whether each offer is actually beneficial after considering price, passenger count, the current exchange/rebooking cost, and currency normalization.
 
-Current assumptions to encode:
+The core safety rule is that rebooking must produce positive estimated net saving. Travel-quality changes are handled as policy constraints: if a candidate saves money but may violate customer policy or traveler expectations, the system recommends human review instead of direct rebooking.
 
-- USD is the normalized comparison currency.
-- The original booking's `changeFeePerPassenger` is the current exchange/rebooking cost.
-- The candidate offer's `changeFeePerPassenger` is treated as a future fare attribute for comparison, not as the immediate exchange cost.
-- `DO_NOT_REBOOK` results should still include useful metadata explaining why no candidate was selected.
+Every recommendation includes machine-readable reason codes and candidate-level metadata so the decision path can be audited and reproduced. This is especially important for money-impacting workflows: the system should be able to show which fare snapshot, FX assumptions, candidate comparisons, and policy rules produced each recommendation.
+
+Before any future automatic ticket exchange, production must revalidate the selected option because prices, availability, and fare attributes can change after the recommendation is generated. This is especially important after human review, which may introduce a delay between recommendation and action.
 
 ## Scale, Cost & Observability
 
-Several layers of observability should be introduced for the application:
+If the system processes a much larger booking volume, latency and throughput will become product concerns. The current POC evaluates a static fare feed in memory; production fare search is likely to be the main bottleneck and cost driver. Searches should be grouped, cached, or batched where possible, and large workloads should be processed asynchronously with queues and workers.
 
-### 
+If an LLM is later used for human-readable explanations or policy parsing, token usage and latency must be tracked separately. LLM calls should remain outside the critical decision path and should use cost controls such as prompt caching, deterministic templates, and clear fallbacks.
+
+With many data sources, production would also need source-specific parsers and validation monitoring. At high booking volumes, sending too many recommendations to human review can become operationally expensive for customers, so configurable automation may eventually be needed for high-confidence cases.
+
+Several observability layers should be introduced to track whether the system is healthy, reproducible, and actually creating trusted savings:
+
+### System Observability
+
+- CPU, memory, disk, and container/process restarts
+- job queue depth and worker throughput if processing becomes asynchronous
+- dependency health for fare providers, FX providers, policy stores, and output sinks
+- error rates by component, especially fare search, FX conversion, policy evaluation, and output delivery
+
+### Application Observability
+
+Every recommendation should be reproducible from logged or persisted inputs and component outputs. At minimum, store or trace:
+
+- booking snapshot and fare snapshot identifiers
+- fare snapshot capture time
+- applied policy name/version
+- FX rates and conversion metadata
+- candidate search inputs and candidate counts
+- candidate evaluations, including economics, comparison dimensions, policy decisions, confidence, and reason codes
+- final booking-level recommendation
+
+The application should also emit operational metrics:
+
+- bookings processed per run
+- candidates evaluated per booking
+- latency per pipeline stage
+- recommendation counts by decision
+- validation or parsing failures by input source
+
+### Business Observability
+
+- estimated savings by customer, route, carrier, currency, and policy version
+- accepted, rejected, and overridden recommendations
+- realized savings after actual rebooking
+- false positives where a recommendation looked good but could not be executed safely
+- false negatives found by human agents or later fare snapshots
+- stale fare snapshots and cases where prices changed before action
+
+### LLM/Agent Observability
+
+If LLM usage is added later, track it separately from deterministic decision logic:
+
+- token usage
+- token cost
+- latency per LLM call
+- prompt/template version
+- fallback rate
+- evaluation scores for generated explanations or policy extraction
 
 ## Assumptions & Open Questions
 
-The POC assumes the fixture shape: one itinerary segment per booking and one fare snapshot loaded from static JSON. Customer-specific policies are future work; this prototype will use a static policy and document its rationale as it is implemented.
+Most assumptions and questions are attached to the relevant architecture sections. The POC uses a deliberately conservative static policy that should be broadly applicable across customers: it captures clear savings, avoids direct rebooking when quality degradation is detected, and sends ambiguous cases to human review.
 
-Open questions to revisit as the design grows:
+Important assumptions:
 
-- What customer-specific travel-quality degradations are acceptable for direct rebooking?
-- What minimum saving threshold, if any, should be required beyond positive net saving?
-- How fresh must a fare snapshot be before a recommendation is considered actionable?
+- Fixtures represent single-segment itineraries.
+- Offer matching by origin, destination, departure date, and seat availability is sufficient for the POC.
+- Positive net saving is the hard financial gate.
+- USD is acceptable as the normalized comparison currency for the POC.
+- The original booking's change fee is the immediate exchange/rebooking cost.
+- Customer-specific policy ingestion is out of scope.
+- Automatic ticket exchange is out of scope.
+
+Open questions:
+
+- Are the confidence penalties directionally acceptable to the business?
+- Should `REBOOK` always outrank `SEND_FOR_HUMAN_REVIEW`, even when the review candidate saves more?
+- Is there a minimum absolute or percentage saving threshold beyond positive net saving?
+- How fresh must a fare snapshot be before a recommendation becomes stale?
+- Which quality degradations should different customer segments allow for direct rebooking?
 
 ## Deliberately Not Done / Next Steps
 
 Not implemented in this first design slice:
 
+- Explanation Generator (not enough time)
 - multi-segment journey matching
-- customer-policy ingestion or configuration
+- passenger splitting across different flights
+- customer-policy ingestion or configuration, potentially assisted by an LLM
+- timestamped production FX provider
+- real ticket-exchange pricing model
 - live fare search
-- automatic ticket exchange
+- automatic ticket exchange, which could later be controlled by a feature flag and a configurable confidence threshold
 - UI or workflow integration
 - live LLM calls
-- Explanation Generator
-
-The next implementation step is to create domain models and fixture loading, then implement Candidate Search with tests for route/date matching, insufficient seats, no price filtering during search, and the single-segment fixture assumption.
+- a component that revalidates the chosen candidate before rebooking if a human reviews it later, because prices and fare attributes can change dynamically
+- API adapters or event-specific output payloads
+- partial API responses backed by full audit storage
+- CI/CD pipeline, Docker, linters
+- integration, E2E tests
 
 ## AI Usage Note
 
-This project is being developed with Codex as an AI coding assistant. I am using it to review the assignment, draft design slices, and implement the prototype iteratively while keeping deterministic financial and policy logic explicit. One AI suggestion I rejected was using a generic agent framework for the decision path; that would add unnecessary complexity and make money-impacting behavior harder to audit for this POC.
+I used ChatGPT to discuss the assignment, fixtures, possible system boundaries, and questions worth clarifying with PMs. After receiving PM feedback, I used Codex iteratively to draft `DESIGN.md` sections and implement the prototype component by component. I reviewed and adjusted the design after each iteration while Codex generated or updated the corresponding code.
+
+One AI suggestion I rejected was using an LLM as a judge for this POC. For the current scope, the decision can be represented as deterministic rules over known fixture attributes. An LLM judge would increase cost and uncertainty without adding meaningful decision quality, and would make money-impacting behavior harder to test and reproduce.
